@@ -22,42 +22,55 @@ def base58_to_hex(base58_string):
 
 def update_result(*args):
     """
-    Update the result Text widget whenever the input changes.
+    Update the result Text widgets whenever the input changes.
     """
     input_text = input_textbox.get(1.0, tk.END).strip()  # Get text from the input Text widget
-    result_text.config(state=tk.NORMAL)  # Temporarily enable the Result Text widget
-    result_text.delete(1.0, tk.END)  # Clear the result Text widget
+    hex_text.config(state=tk.NORMAL)  # Temporarily enable the hex Text widget
+    length_text.config(state=tk.NORMAL)  # Temporarily enable the length Text widget
+    hex_text.delete(1.0, tk.END)  # Clear the hex Text widget
+    length_text.delete(1.0, tk.END)  # Clear the length Text widget
 
     for line in input_text.splitlines():
         if line.strip():  # Skip empty lines
             hex_result = base58_to_hex(line)
-            result_text.insert(tk.END, f"{hex_result}\n")
+            string_length = len(line.strip())
+            hex_text.insert(tk.END, f"{hex_result}\n")
+            length_text.insert(tk.END, f"{string_length}\n")
         else:
-            result_text.insert(tk.END, "\n")  # Preserve empty lines
+            hex_text.insert(tk.END, "\n")  # Preserve empty lines
+            length_text.insert(tk.END, "\n")
     
-    result_text.config(state=tk.DISABLED)  # Re-disable the Result Text widget
+    hex_text.config(state=tk.DISABLED)  # Re-disable the hex Text widget
+    length_text.config(state=tk.DISABLED)  # Re-disable the length Text widget
 
 # Create the main window
 root = tk.Tk()
 root.title("Base58 to Hex Decoder")
-root.geometry("800x450")  # Set window size
+root.geometry("1200x450")  # Set window size
 root.configure(bg="black")  # Set background color for better contrast
 
 # Labels for the textboxes
 input_label = tk.Label(root, text="Enter Base58 Addresses:", font=("Arial", 12), bg="black", fg="white")
 input_label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-result_label = tk.Label(root, text="Decoded Hex Values:", font=("Arial", 12), bg="black", fg="white")
-result_label.grid(row=0, column=1, padx=10, pady=10, sticky="w")
+hex_label = tk.Label(root, text="Decoded Hex Values:", font=("Arial", 12), bg="black", fg="white")
+hex_label.grid(row=0, column=1, padx=10, pady=10, sticky="w")
+length_label = tk.Label(root, text="String Length:", font=("Arial", 12), bg="black", fg="white")
+length_label.grid(row=0, column=2, padx=10, pady=10, sticky="w")
 
 # Input Text widget for entering Base58 addresses
 input_textbox = tk.Text(root, height=20, width=40, font=('Arial', 12), bg="black", fg="white", insertbackground="white")
 input_textbox.grid(row=1, column=0, padx=10, pady=10)
 input_textbox.bind("<KeyRelease>", update_result)  # Trigger result update on text change
 
-# Result Text widget for displaying decoded HEX values
-result_text = tk.Text(root, height=20, width=40, font=('Arial', 12), bg="black", fg="white")
-result_text.grid(row=1, column=1, padx=10, pady=10)
-result_text.config(state=tk.DISABLED)  # Initially disable the Result Text widget
+# Hex Text widget for displaying decoded HEX values
+hex_text = tk.Text(root, height=20, width=60, font=('Arial', 12), bg="black", fg="white")
+hex_text.grid(row=1, column=1, padx=10, pady=10)
+hex_text.config(state=tk.DISABLED)  # Initially disable the Hex Text widget
+
+# Length Text widget for displaying string lengths
+length_text = tk.Text(root, height=20, width=20, font=('Arial', 12), bg="black", fg="white")
+length_text.grid(row=1, column=2, padx=10, pady=10)
+length_text.config(state=tk.DISABLED)  # Initially disable the Length Text widget
 
 # Run the application
 root.mainloop()
