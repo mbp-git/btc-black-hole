@@ -3,7 +3,7 @@ from multiprocessing import Pool, cpu_count, set_start_method, Manager
 import time
 
 # Constants
-UPDATE_INTERVAL = 100_000  # Update progress every 10,000,000 iterations
+UPDATE_INTERVAL = 10_000_000  # Update progress every 10,000,000 iterations
 
 
 def double_sha256(data):
@@ -27,8 +27,40 @@ def worker(payload, start, end, progress_queue):
             progress_queue.put((i, time.time()))  # Send progress updates
 
         if double_sha256(test_payload[:-4])[:4] == checksum:
+            progress_queue.put(None)  # Signal completion
             return i, checksum.hex()
+    progress_queue.put(None)  # Signal end of worker
     return None, None
+
+
+def monitor_progress(queue, total_checksums):
+    """
+    Monitor progress and display real-time updates.
+    """
+    start_time = time.time()
+    processed = 0
+
+    while True:
+        try:
+            update = queue.get(timeout=1)
+            if update is None:  # End signal
+                break
+
+            processed, current_time = update
+            elapsed_time = current_time - start_time
+            progress = processed / total_checksums
+            hashes_per_second = processed / elapsed_time if elapsed_time > 0 else 0
+            remaining_time = (elapsed_time / progress) - elapsed_time if progress > 0 else 0
+
+            print(
+                f"\rCurrent Checksum: {processed:08X} | Progress: {progress * 100:.2f}% | "
+                f"Hashes/s: {hashes_per_second:.2f} | Time Remaining: {remaining_time / 60:.2f} min",
+                end="",
+                flush=True,
+            )
+        except:
+            # Timeout while waiting for updates
+            continue
 
 
 def brute_force(payload):
@@ -51,37 +83,12 @@ def brute_force(payload):
             monitor = pool.apply_async(monitor_progress, (progress_queue, total_checksums))
             results = pool.starmap(worker, [(payload, start, end, progress_queue) for (payload, start, end) in ranges])
 
-            monitor.terminate()  # Stop the progress monitor
+            monitor.wait()  # Wait for progress monitoring to finish
 
             for result in results:
                 if result[0] is not None:
                     return result
     return None, None
-
-
-def monitor_progress(queue, total_checksums):
-    """
-    Monitor progress and display real-time updates.
-    """
-    start_time = time.time()
-
-    while True:
-        try:
-            count, current_time = queue.get(timeout=1)
-            elapsed_time = current_time - start_time
-            progress = count / total_checksums
-            hashes_per_second = count / elapsed_time if elapsed_time > 0 else 0
-            remaining_time = (elapsed_time / progress) - elapsed_time if progress > 0 else 0
-
-            print(
-                f"\rCurrent Checksum: {count:08X} | Progress: {progress * 100:.2f}% | "
-                f"Hashes/s: {hashes_per_second:.2f} | Time Remaining: {remaining_time / 60:.2f} min",
-                end="",
-                flush=True,
-            )
-        except:
-            # Timeout while waiting for updates
-            break
 
 
 def main():
