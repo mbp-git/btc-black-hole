@@ -3,12 +3,14 @@ from tkinter import ttk
 from hashlib import sha256
 import base58
 import binascii
-from tqdm import tqdm
 from threading import Thread, Event
 import time
 
+# Constants
+UPDATE_INTERVAL = 8000000  # Progress updates every 800,000 iterations
 
 # Test case 1BitcoinEaterAddressDontSendf5????
+
 def decode_base58_ignore_question(base58_string):
     """
     Decode a Base58 string, ignoring '?' characters.
@@ -40,7 +42,7 @@ def brute_force_checksum(hex_payload, progress_label, progress_bar, time_label, 
     start_time = time.time()
     total_checksums = 0xFFFFFFFF + 1
 
-    for i in tqdm(range(total_checksums), desc="Brute-forcing checksum", ascii=True):
+    for i in range(total_checksums):
         if stop_event.is_set():  # Check if cancel is triggered
             result_text.insert(tk.END, "Brute-forcing cancelled.\n")
             return
@@ -50,7 +52,7 @@ def brute_force_checksum(hex_payload, progress_label, progress_bar, time_label, 
         test_payload = payload + checksum
 
         # Validate checksum
-        if sha256d(test_payload[:-4])[:4] == test_payload[-4:]:
+        if sha256d(test_payload[:-4])[:4] == checksum:
             valid_checksum = checksum.hex()
             result_text.insert(tk.END, f"Valid checksum found: {valid_checksum}\n")
             progress_label.config(text="Progress: Done!")
@@ -59,8 +61,8 @@ def brute_force_checksum(hex_payload, progress_label, progress_bar, time_label, 
             hps_label.config(text="Hashes per Second: N/A")
             return
 
-        # Update progress, ETC, and H/s in UI
-        if i % 100000 == 0:  # Reduce UI updates for better performance
+        # Update progress, ETC, and H/s in UI every `UPDATE_INTERVAL` iterations
+        if i % UPDATE_INTERVAL == 0:
             elapsed_time = time.time() - start_time
             progress = i / total_checksums
             remaining_time = (elapsed_time / progress) - elapsed_time if progress > 0 else 0
@@ -82,7 +84,7 @@ def brute_force_checksum(hex_payload, progress_label, progress_bar, time_label, 
 
 def start_bruteforce():
     """
-    Start the brute-forcing process in a separate thread.
+    Start the brute-forcing process and update the GUI.
     """
     global stop_event
     stop_event.clear()  # Reset the stop event
