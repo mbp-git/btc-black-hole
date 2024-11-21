@@ -1,6 +1,7 @@
 import tkinter as tk
-from tkinter import PhotoImage
 import string
+
+# Test case 1BitcoinEaterAddressDontSendf59kuE
 
 # Define the Base58 alphabet
 BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -26,11 +27,11 @@ def check_base58():
     input_string = entry.get()
     
     if is_base58_valid(input_string):
-        result_label.config(text="Valid Base58!", fg="green")
-        result_icon.config(image=check_icon)  # Set check icon
+        result_label.config(text="Valid Base58 ✔", fg="green")
+        result_icon.config(text="✔", fg="green")  # Use checkmark as text
     else:
-        result_label.config(text="Invalid Base58!", fg="red")
-        result_icon.config(image=cross_icon)  # Set cross icon
+        result_label.config(text="Invalid Base58 ❌", fg="red")
+        result_icon.config(text="❌", fg="red")  # Use crossmark as text
 
 # Create the main window
 root = tk.Tk()
@@ -53,4 +54,9 @@ check_button.pack(pady=20)
 result_label = tk.Label(root, text="", font=("Arial", 14))
 result_label.pack(pady=10)
 
-# Load the check and
+# Create a label for displaying the icon
+result_icon = tk.Label(root, font=("Arial", 20))
+result_icon.pack(pady=10)
+
+# Run the application
+root.mainloop()
