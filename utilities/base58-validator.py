@@ -1,5 +1,7 @@
 import tkinter as tk
 
+# Test case 1BitcoinEaterAddressDontSendf59kuE
+
 # Define the Base58 alphabet
 BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 BASE58_SET = set(BASE58_ALPHABET)
