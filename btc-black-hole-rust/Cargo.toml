@@ -9,3 +9,9 @@ sha2 = "0.10.6"
 clap = { version = "4.0.32", features = ["derive"] }
 num_cpus = "1.13.1"
 crossbeam = "0.8.2"
+
+[profile.release]
+opt-level = 3 # Use "3" for maximum speed"
+codegen-units = 1
+lto = true
+panic = 'abort'
