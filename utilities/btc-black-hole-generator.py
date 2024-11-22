@@ -1,3 +1,9 @@
+# https://bitcointalk.org/index.php?topic=136362.0
+# Test address: 1BitcoinEaterAddressDontSendf59kuE
+# Hex: 00759d6677091e973b9e9d99f19c68fbf43e3f05f95eabd8a1
+# Payload: 759d6677091e973b9e9d99f19c68fbf43e3f05f9
+# Checksum: eabd8a1
+
 import tkinter as tk
 from tkinter import ttk
 from hashlib import sha256
@@ -5,22 +11,7 @@ import base58
 import binascii
 from threading import Thread, Event
 import time
-
-# Constants
-UPDATE_INTERVAL = 8000000  # Progress updates every 800,000 iterations
-
-# Test case 1BitcoinEaterAddressDontSendf5????
-
-def decode_base58_ignore_question(base58_string):
-    """
-    Decode a Base58 string, ignoring '?' characters.
-    """
-    filtered_string = base58_string.replace("?", "")
-    try:
-        decoded_bytes = base58.b58decode(filtered_string.strip())
-        return decoded_bytes.hex()
-    except (ValueError, binascii.Error):
-        return "Invalid Base58"
+from itertools import product
 
 
 def sha256d(data):
@@ -30,47 +21,90 @@ def sha256d(data):
     return sha256(sha256(data).digest()).digest()
 
 
-def brute_force_checksum(hex_payload, progress_label, progress_bar, time_label, hps_label, stop_event):
+def validate_base58_address(address):
     """
-    Brute-force a valid checksum for the given payload.
+    Validate a Base58 Bitcoin address by checking the checksum.
     """
-    payload = bytes.fromhex(hex_payload)
-    if len(payload) != 21:
-        result_text.insert(tk.END, "Invalid payload length. Expected 21 bytes.\n")
+    try:
+        decoded = base58.b58decode(address)
+        payload, checksum = decoded[:-4], decoded[-4:]
+        if sha256d(payload)[:4] == checksum:
+            return True
+        return False
+    except (ValueError, binascii.Error):
+        return False
+
+
+def brute_force_checksum(base58_input, start_suffix, progress_label, progress_bar, time_label, hps_label, payload_hex_textbox, stop_event):
+    """
+    Brute-force valid Base58 characters to make the total address 34 bytes and validate it.
+    """
+    start_time = time.time()
+    base58_alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+    # Determine how many characters need to be added to make it 34 bytes
+    current_length = len(base58_input)
+    if current_length >= 34:
+        result_text.insert(tk.END, "Input address already 34 characters or longer.\n")
         return
 
-    start_time = time.time()
-    total_checksums = 0xFFFFFFFF + 1
+    chars_to_add = 34 - current_length
 
-    for i in range(total_checksums):
+    # Generate the starting point based on the starting suffix
+    start_index = 0
+    for idx, char in enumerate(reversed(start_suffix)):
+        start_index += base58_alphabet.index(char) * (len(base58_alphabet) ** idx)
+
+    # Iterate over all combinations of Base58 characters for the required length
+    total_combinations = len(base58_alphabet) ** chars_to_add
+    combinations_checked = 0
+
+    for i in range(start_index, total_combinations):
         if stop_event.is_set():  # Check if cancel is triggered
             result_text.insert(tk.END, "Brute-forcing cancelled.\n")
             return
 
-        # Append the brute-forced checksum to the payload
-        checksum = i.to_bytes(4, byteorder="big")
-        test_payload = payload + checksum
+        # Generate the current combination
+        combination = []
+        temp = i
+        for _ in range(chars_to_add):
+            combination.append(base58_alphabet[temp % len(base58_alphabet)])
+            temp //= len(base58_alphabet)
+        suffix = ''.join(reversed(combination))
 
-        # Validate checksum
-        if sha256d(test_payload[:-4])[:4] == checksum:
-            valid_checksum = checksum.hex()
-            result_text.insert(tk.END, f"Valid checksum found: {valid_checksum}\n")
+        # Create the candidate address
+        candidate_address = base58_input + suffix
+
+        # Validate the candidate address
+        if validate_base58_address(candidate_address):
+            result_text.insert(tk.END, f"Valid address found: {candidate_address}\n")
             progress_label.config(text="Progress: Done!")
             progress_bar["value"] = 100
             time_label.config(text="Time Remaining: Completed")
             hps_label.config(text="Hashes per Second: N/A")
+            payload_hex_textbox.config(state="normal")
+            payload_hex_textbox.delete("1.0", tk.END)
+            payload_hex_textbox.insert("1.0", candidate_address)
+            payload_hex_textbox.config(state="disabled")
             return
 
-        # Update progress, ETC, and H/s in UI every `UPDATE_INTERVAL` iterations
-        if i % UPDATE_INTERVAL == 0:
+        # Update progress, ETC, and H/s in UI every 800,000 combinations
+        combinations_checked += 1
+        if combinations_checked % 800000 == 0:
             elapsed_time = time.time() - start_time
-            progress = i / total_checksums
+            progress = combinations_checked / total_combinations
             remaining_time = (elapsed_time / progress) - elapsed_time if progress > 0 else 0
-            hashes_per_second = i / elapsed_time if elapsed_time > 0 else 0
+            hashes_per_second = combinations_checked / elapsed_time if elapsed_time > 0 else 0
 
-            # Display progress with current checksum in hex
+            # Update current candidate address in the GUI
+            payload_hex_textbox.config(state="normal")
+            payload_hex_textbox.delete("1.0", tk.END)
+            payload_hex_textbox.insert("1.0", candidate_address)
+            payload_hex_textbox.config(state="disabled")
+
+            # Display progress
             progress_label.config(
-                text=f"Progress: {progress * 100:.2f}% | Current Checksum: {checksum.hex()}"
+                text=f"Progress: {progress * 100:.2f}% | Last Checked: {candidate_address}"
             )
             progress_bar["value"] = progress * 100
             time_label.config(
@@ -79,7 +113,7 @@ def brute_force_checksum(hex_payload, progress_label, progress_bar, time_label, 
             hps_label.config(text=f"Hashes per Second: {hashes_per_second:.2f}")
             progress_bar.update()
 
-    result_text.insert(tk.END, "No valid checksum found.\n")
+    result_text.insert(tk.END, "No valid address found.\n")
     progress_label.config(text="Progress: Finished.")
     time_label.config(text="Time Remaining: N/A")
     hps_label.config(text="Hashes per Second: N/A")
@@ -93,23 +127,15 @@ def start_bruteforce():
     stop_event.clear()  # Reset the stop event
 
     base58_input = input_textbox.get("1.0", tk.END).strip()
-    hex_payload = decode_base58_ignore_question(base58_input)
+    start_suffix = start_suffix_entry.get().strip()
 
-    if hex_payload == "Invalid Base58":
-        result_text.insert(tk.END, "Invalid Base58 string.\n")
-        return
-
-    if hex_payload.startswith("00"):
-        hex_payload = hex_payload[2:]  # Remove version byte (00)
-
-    payload = hex_payload[:42]  # Extract first 21 bytes (42 hex chars)
     progress_label.config(text="Starting brute force...")
     progress_bar["value"] = 0
 
     # Run brute-force in a separate thread
     thread = Thread(
         target=brute_force_checksum,
-        args=(payload, progress_label, progress_bar, time_label, hps_label, stop_event),
+        args=(base58_input, start_suffix, progress_label, progress_bar, time_label, hps_label, payload_hex_textbox, stop_event),
     )
     thread.start()
 
@@ -127,12 +153,12 @@ stop_event = Event()
 # Create the main window
 root = tk.Tk()
 root.title("BTC Address Checksum Brute-Force")
-root.geometry("800x700")
+root.geometry("800x900")
 root.configure(bg="black")
 
 # Input label and textbox
 input_label = tk.Label(
-    root, text="Enter Base58 Address:", font=("Arial", 12), bg="black", fg="white"
+    root, text="Enter Base58 Address (without checksum):", font=("Arial", 12), bg="black", fg="white"
 )
 input_label.pack(pady=10)
 
@@ -146,6 +172,35 @@ input_textbox = tk.Text(
     insertbackground="white",
 )
 input_textbox.pack(pady=10)
+
+# Starting checksum
+start_suffix_label = tk.Label(
+    root, text="Starting Suffix (Base58):", font=("Arial", 12), bg="black", fg="white"
+)
+start_suffix_label.pack(pady=10)
+
+start_suffix_entry = tk.Entry(
+    root, font=("Arial", 12), bg="gray10", fg="white"
+)
+start_suffix_entry.insert(0, "1")  # Default starting suffix
+start_suffix_entry.pack(pady=10)
+
+# Current payload hex
+payload_hex_label = tk.Label(
+    root, text="Current Candidate Address (Read-Only):", font=("Arial", 12), bg="black", fg="white"
+)
+payload_hex_label.pack(pady=10)
+
+payload_hex_textbox = tk.Text(
+    root,
+    height=2,
+    width=60,
+    font=("Arial", 12),
+    bg="gray10",
+    fg="white",
+    state="disabled",  # Start in read-only mode
+)
+payload_hex_textbox.pack(pady=10)
 
 # Progress bar and labels
 progress_label = tk.Label(
