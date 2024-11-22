@@ -68,7 +68,10 @@ def brute_force_checksum(hex_payload, progress_label, progress_bar, time_label, 
             remaining_time = (elapsed_time / progress) - elapsed_time if progress > 0 else 0
             hashes_per_second = i / elapsed_time if elapsed_time > 0 else 0
 
-            progress_label.config(text=f"Progress: {progress * 100:.2f}%")
+            # Display progress with current checksum in hex
+            progress_label.config(
+                text=f"Progress: {progress * 100:.2f}% | Current Checksum: {checksum.hex()}"
+            )
             progress_bar["value"] = progress * 100
             time_label.config(
                 text=f"Time Remaining: {remaining_time / 60:.2f} minutes" if progress > 0 else "Time Remaining: Calculating..."
