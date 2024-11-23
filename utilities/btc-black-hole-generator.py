@@ -11,7 +11,6 @@ import base58
 import binascii
 from threading import Thread, Event
 import time
-from itertools import product
 
 
 def sha256d(data):
@@ -153,114 +152,167 @@ stop_event = Event()
 # Create the main window
 root = tk.Tk()
 root.title("BTC Address Checksum Brute-Force")
-root.geometry("800x720")
-root.configure(bg="black")
+root.geometry("900x750")  # Adjusted size for better layout
+root.configure(bg="#1e1e1e")  # Darker background for sleek look
+
+# Styling
+style = ttk.Style()
+style.theme_use("clam")  # Using 'clam' theme for better styling options
+style.configure("TProgressbar", thickness=20, background="#00ff00", troughcolor="#333333")
+style.configure("TButton",
+                font=("Consolas", 12, "bold"),
+                foreground="#1e1e1e",
+                background="#00ff00",
+                focuscolor="none")
+style.map("TButton",
+          foreground=[('active', '#1e1e1e')],
+          background=[('active', '#33ff33')])
+
+# Frames for better organization
+input_frame = tk.Frame(root, bg="#1e1e1e")
+input_frame.pack(pady=10)
+
+progress_frame = tk.Frame(root, bg="#1e1e1e")
+progress_frame.pack(pady=10)
+
+result_frame = tk.Frame(root, bg="#1e1e1e")
+result_frame.pack(pady=10)
+
+button_frame = tk.Frame(root, bg="#1e1e1e")
+button_frame.pack(pady=20)
 
 # Input label and textbox
 input_label = tk.Label(
-    root, text="Enter Base58 Address (without checksum):", font=("Arial", 12), bg="black", fg="white"
+    input_frame,
+    text="Enter Base58 Address (without checksum):",
+    font=("Consolas", 14),
+    bg="#1e1e1e",
+    fg="#00ff00"
 )
-input_label.pack(pady=10)
+input_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
 input_textbox = tk.Text(
-    root,
+    input_frame,
     height=2,
     width=60,
-    font=("Arial", 12),
-    bg="gray10",
-    fg="white",
-    insertbackground="white",
+    font=("Consolas", 12),
+    bg="#2e2e2e",
+    fg="#00ff00",
+    insertbackground="#00ff00"
 )
-input_textbox.pack(pady=10)
+input_textbox.grid(row=1, column=0, padx=10, pady=5)
 
 # Starting checksum
 start_suffix_label = tk.Label(
-    root, text="Starting Suffix (Base58):", font=("Arial", 12), bg="black", fg="white"
+    input_frame,
+    text="Starting Suffix (Base58):",
+    font=("Consolas", 14),
+    bg="#1e1e1e",
+    fg="#00ff00"
 )
-start_suffix_label.pack(pady=10)
+start_suffix_label.grid(row=2, column=0, padx=10, pady=5, sticky="w")
 
 start_suffix_entry = tk.Entry(
-    root, font=("Arial", 12), bg="gray10", fg="white"
+    input_frame,
+    font=("Consolas", 12),
+    bg="#2e2e2e",
+    fg="#00ff00",
+    insertbackground="#00ff00"
 )
 start_suffix_entry.insert(0, "1")  # Default starting suffix
-start_suffix_entry.pack(pady=10)
+start_suffix_entry.grid(row=3, column=0, padx=10, pady=5, sticky="w")
 
 # Current payload hex
 payload_hex_label = tk.Label(
-    root, text="Current Candidate Address (Read-Only):", font=("Arial", 12), bg="black", fg="white"
+    input_frame,
+    text="Current Candidate Address (Read-Only):",
+    font=("Consolas", 14),
+    bg="#1e1e1e",
+    fg="#00ff00"
 )
-payload_hex_label.pack(pady=10)
+payload_hex_label.grid(row=4, column=0, padx=10, pady=5, sticky="w")
 
 payload_hex_textbox = tk.Text(
-    root,
+    input_frame,
     height=2,
     width=60,
-    font=("Arial", 12),
-    bg="gray10",
-    fg="white",
-    state="disabled",  # Start in read-only mode
+    font=("Consolas", 12),
+    bg="#2e2e2e",
+    fg="#00ff00",
+    state="disabled"
 )
-payload_hex_textbox.pack(pady=10)
+payload_hex_textbox.grid(row=5, column=0, padx=10, pady=5)
 
 # Progress bar and labels
 progress_label = tk.Label(
-    root, text="Progress: 0%", font=("Arial", 12), bg="black", fg="white"
+    progress_frame,
+    text="Progress: 0%",
+    font=("Consolas", 14),
+    bg="#1e1e1e",
+    fg="#00ff00"
 )
-progress_label.pack(pady=10)
+progress_label.pack(pady=5)
 
 progress_bar = ttk.Progressbar(
-    root, orient="horizontal", length=700, mode="determinate"
+    progress_frame,
+    orient="horizontal",
+    length=700,
+    mode="determinate"
 )
-progress_bar.pack(pady=10)
+progress_bar.pack(pady=5)
 
 time_label = tk.Label(
-    root,
+    progress_frame,
     text="Time Remaining: Calculating...",
-    font=("Arial", 12),
-    bg="black",
-    fg="white",
+    font=("Consolas", 14),
+    bg="#1e1e1e",
+    fg="#00ff00"
 )
-time_label.pack(pady=10)
+time_label.pack(pady=5)
 
 hps_label = tk.Label(
-    root,
+    progress_frame,
     text="Hashes per Second: Calculating...",
-    font=("Arial", 12),
-    bg="black",
-    fg="white",
+    font=("Consolas", 14),
+    bg="#1e1e1e",
+    fg="#00ff00"
 )
-hps_label.pack(pady=10)
+hps_label.pack(pady=5)
 
 # Result label and textbox
 result_label = tk.Label(
-    root, text="Result:", font=("Arial", 12), bg="black", fg="white"
+    result_frame,
+    text="Result:",
+    font=("Consolas", 14),
+    bg="#1e1e1e",
+    fg="#00ff00"
 )
-result_label.pack(pady=10)
+result_label.pack(pady=5)
 
 result_text = tk.Text(
-    root, height=10, width=80, font=("Arial", 12), bg="gray10", fg="white"
+    result_frame,
+    height=8,
+    width=80,
+    font=("Consolas", 12),
+    bg="#2e2e2e",
+    fg="#00ff00"
 )
-result_text.pack(pady=10)
+result_text.pack(pady=5)
 
 # Buttons
-button_frame = tk.Frame(root, bg="black")
-button_frame.pack(pady=20)
-
-start_button = tk.Button(
+start_button = ttk.Button(
     button_frame,
     text="Start Brute-Force",
-    font=("Arial", 12),
-    command=start_bruteforce,
+    command=start_bruteforce
 )
-start_button.grid(row=0, column=0, padx=10)
+start_button.grid(row=0, column=0, padx=20)
 
-cancel_button = tk.Button(
+cancel_button = ttk.Button(
     button_frame,
     text="Cancel",
-    font=("Arial", 12),
-    command=cancel_bruteforce,
+    command=cancel_bruteforce
 )
-cancel_button.grid(row=0, column=1, padx=10)
+cancel_button.grid(row=0, column=1, padx=20)
 
 # Run the application
 root.mainloop()
