@@ -1,17 +1,22 @@
 [package]
-name = "btc_black_hole_rust"
+name = "btc-black-hole-rust"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-bs58 = "0.4.0"
-sha2 = "0.10.6"
-clap = { version = "4.0.32", features = ["derive"] }
-num_cpus = "1.13.1"
-crossbeam = "0.8.2"
+# Optional: Update description, authors, and license
+description = "A Bitcoin address checksum brute-force GUI tool."
+authors = ["mpb <mpb-git@pm.me.com>"]
+license = "MIT"
 
-[profile.release]
-opt-level = 3 # Use "3" for maximum speed"
-codegen-units = 1
-lto = true
-panic = 'abort'
+# Optional: Define the binary name explicitly
+[[bin]]
+name = "btc-black-hole-rust"
+path = "src/main.rs"
+
+[dependencies]
+eframe = "0.22"
+egui = "0.22"
+base58 = "0.1.0"
+sha2 = "0.10"
+crossbeam = "0.8"
+num_cpus = "1.13"
