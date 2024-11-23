@@ -5,10 +5,10 @@ edition = "2021"
 
 # Optional: Update description, authors, and license
 description = "A Bitcoin address checksum brute-force GUI tool."
-authors = ["mpb <mpb-git@pm.me.com>"]
+authors = ["Your Name <youremail@example.com>"]
 license = "MIT"
 
-# Optional: Define the binary name explicitly
+# Define the binary
 [[bin]]
 name = "btc-black-hole-rust"
 path = "src/main.rs"

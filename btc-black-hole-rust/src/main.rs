@@ -1,3 +1,5 @@
+// src/main.rs
+
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -7,7 +9,7 @@ use std::time::Instant;
 
 use base58::FromBase58;
 use crossbeam::channel::{bounded, Receiver, Sender};
-use eframe::egui::{CentralPanel, TextEdit, ProgressBar, Vec2}; // <-- Corrected imports
+use eframe::egui::{CentralPanel, TextEdit, ProgressBar, Vec2};
 use sha2::{Digest, Sha256};
 use num_cpus;
 
@@ -53,6 +55,7 @@ fn validate_base58_address(address: &str) -> bool {
 struct BruteForceApp {
     base58_input: String,
     start_suffix: String,
+    thread_count: usize,
     progress: f32,
     time_remaining: String,
     hashes_per_second: String,
@@ -68,6 +71,7 @@ impl Default for BruteForceApp {
         Self {
             base58_input: String::from("1BitcoinEaterAddressDontSendf59kuE"),
             start_suffix: String::from("1"),
+            thread_count: num_cpus::get(),
             progress: 0.0,
             time_remaining: String::from("Calculating..."),
             hashes_per_second: String::from("Calculating..."),
@@ -90,12 +94,23 @@ impl eframe::App for BruteForceApp {
             // Input Fields
             ui.horizontal_wrapped(|ui| {
                 ui.label("Enter Base58 Address (without checksum):");
-                ui.add(TextEdit::singleline(&mut self.base58_input));
+                ui.add(TextEdit::singleline(&mut self.base58_input).desired_width(400.0));
             });
 
             ui.horizontal_wrapped(|ui| {
                 ui.label("Starting Suffix (Base58):");
-                ui.add(TextEdit::singleline(&mut self.start_suffix));
+                ui.add(TextEdit::singleline(&mut self.start_suffix).desired_width(200.0));
+            });
+
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Number of Threads:");
+                // Ensure thread_count is at least 1 and at most num_cpus::get()
+                ui.add(
+                    egui::DragValue::new(&mut self.thread_count)
+                        .clamp_range(1..=num_cpus::get())
+                        .speed(1),
+                );
+                ui.label(format!("(Available CPUs: {})", num_cpus::get()));
             });
 
             ui.separator();
@@ -118,7 +133,9 @@ impl eframe::App for BruteForceApp {
             ui.add(
                 TextEdit::multiline(&mut self.result)
                     .desired_rows(10)
-                    .desired_width(f32::INFINITY),
+                    .desired_width(f32::INFINITY)
+                    .lock_focus(true)
+                    .min_size(Vec2::new(0.0, 150.0)), // Replaced desired_height with min_size
             );
 
             ui.separator();
@@ -199,8 +216,12 @@ impl eframe::App for BruteForceApp {
 
 impl BruteForceApp {
     fn start_bruteforce(&mut self) {
+        // Reset the stop_flag to false before starting a new operation
+        self.stop_flag.store(false, Ordering::SeqCst);
+
         let base58_input = self.base58_input.clone();
         let start_suffix = self.start_suffix.clone();
+        let thread_count = self.thread_count;
         let stop_flag = Arc::clone(&self.stop_flag);
         self.running = true;
         self.result.clear();
@@ -217,7 +238,7 @@ impl BruteForceApp {
 
         // Start the brute-force thread
         thread::spawn(move || {
-            brute_force_checksum(base58_input, start_suffix, tx, stop_flag)
+            brute_force_checksum(base58_input, start_suffix, thread_count, tx, stop_flag)
         });
     }
 }
@@ -226,6 +247,7 @@ impl BruteForceApp {
 fn brute_force_checksum(
     base58_input: String,
     start_suffix: String,
+    thread_count: usize,
     tx: Sender<Message>,
     stop_flag: Arc<AtomicBool>,
 ) {
@@ -233,14 +255,12 @@ fn brute_force_checksum(
     let base58_alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
     let base58_len = base58_alphabet.len() as u128;
 
-    // Determine how many characters need to be added to make it 34 bytes
+    // Determine how many characters need to be added to make it 34 characters
     let current_length = base58_input.len();
     if current_length >= 34 {
-        if let Err(e) = tx.send(Message::Error(
+        let _ = tx.send(Message::Error(
             "Input address already 34 characters or longer.".to_string(),
-        )) {
-            eprintln!("Failed to send error message: {}", e);
-        }
+        ));
         return;
     }
 
@@ -255,11 +275,9 @@ fn brute_force_checksum(
             start_index += pos as u128 * base58_len_pow;
         } else {
             // Invalid character in starting suffix
-            if let Err(e) = tx.send(Message::Error(
+            let _ = tx.send(Message::Error(
                 "Invalid character in starting suffix.".to_string(),
-            )) {
-                eprintln!("Failed to send error message: {}", e);
-            }
+            ));
             return;
         }
     }
@@ -268,8 +286,8 @@ fn brute_force_checksum(
     let total_combinations = base58_len.pow(chars_to_add as u32);
     let mut combinations_checked = 0u128;
 
-    // Utilize multiple threads for parallel processing
-    let num_threads = num_cpus::get();
+    // Utilize the specified number of threads for parallel processing
+    let num_threads = thread_count.min(total_combinations as usize);
     let chunk_size = if num_threads > 0 {
         (total_combinations - start_index) / num_threads as u128
     } else {
@@ -293,10 +311,8 @@ fn brute_force_checksum(
         let handle = thread::spawn(move || {
             for i in start..end {
                 if stop_flag.load(Ordering::SeqCst) {
-                    if let Err(e) = tx.send(Message::Cancelled) {
-                        eprintln!("Failed to send cancellation message: {}", e);
-                    }
-                    return;
+                    let _ = tx.send(Message::Cancelled);
+                    return; // Exit the thread immediately after cancellation
                 }
 
                 // Generate the current combination
@@ -315,11 +331,9 @@ fn brute_force_checksum(
 
                 // Validate the candidate address
                 if validate_base58_address(&candidate_address) {
-                    if let Err(e) = tx.send(Message::Found {
+                    let _ = tx.send(Message::Found {
                         candidate: candidate_address,
-                    }) {
-                        eprintln!("Failed to send found message: {}", e);
-                    }
+                    });
                     return;
                 }
 
@@ -328,8 +342,7 @@ fn brute_force_checksum(
                 // Update progress, ETC, and H/s in UI every 800,000 combinations
                 if combinations_checked % 800_000 == 0 {
                     let elapsed = start_time.elapsed().as_secs_f32();
-                    let progress =
-                        combinations_checked as f32 / total_combinations as f32 * 100.0;
+                    let progress = combinations_checked as f32 / total_combinations as f32 * 100.0;
                     let remaining_time = if progress > 0.0 {
                         (elapsed / progress) * (100.0 - progress)
                     } else {
@@ -343,15 +356,11 @@ fn brute_force_checksum(
                         current_candidate: candidate_address.clone(),
                     };
 
-                    if let Err(e) = tx.send(progress_update) {
-                        eprintln!("Failed to send progress update: {}", e);
-                    }
+                    let _ = tx.send(progress_update);
                 }
             }
 
-            if let Err(e) = tx.send(Message::Finished) {
-                eprintln!("Failed to send finished message: {}", e);
-            }
+            let _ = tx.send(Message::Finished);
         });
 
         handles.push(handle);
@@ -366,9 +375,7 @@ fn brute_force_checksum(
 
     // If no address found and not cancelled
     if !stop_flag.load(Ordering::SeqCst) {
-        if let Err(e) = tx.send(Message::Finished) {
-            eprintln!("Failed to send finished message: {}", e);
-        }
+        let _ = tx.send(Message::Finished);
     }
 }
 
@@ -419,5 +426,40 @@ mod tests {
     fn test_validate_base58_address_invalid_checksum() {
         let invalid_checksum = "1BitcoinEaterAddressDontSendf59kuF"; // Altered last character
         assert!(!validate_base58_address(invalid_checksum));
+    }
+
+    // New Test Cases for Provided Addresses
+    #[test]
+    fn test_validate_base58_address_invalid_custom1() {
+        let address = "1BitcoinEaterAddressDontBend66qJxq";
+        assert!(!validate_base58_address(address));
+    }
+
+    #[test]
+    fn test_validate_base58_address_invalid_custom2() {
+        let address = "1BitcoinEaterAddressDontBendD91L4T";
+        assert!(!validate_base58_address(address));
+    }
+
+    // Table-Driven Tests for Better Scalability
+    #[test]
+    fn test_validate_base58_address_various() {
+        let test_cases = vec![
+            ("1BitcoinEaterAddressDontSendf59kuE", true),
+            ("1BitcoinEaterAddressDontBend66qJxq", false),
+            ("1BitcoinEaterAddressDontBendD91L4T", false),
+            ("1BitcoinEaterAddressDontSendf59kuF", false),
+            ("1BitcoinEaterAddressDontSendf59ku!", false),
+            ("1BitcoinEaterAddressDontSendf59k", false), // Too short
+        ];
+
+        for (address, expected) in test_cases {
+            assert_eq!(
+                validate_base58_address(address),
+                expected,
+                "Address: {}",
+                address
+            );
+        }
     }
 }
