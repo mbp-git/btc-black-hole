@@ -153,7 +153,7 @@ stop_event = Event()
 # Create the main window
 root = tk.Tk()
 root.title("BTC Address Checksum Brute-Force")
-root.geometry("800x900")
+root.geometry("800x720")
 root.configure(bg="black")
 
 # Input label and textbox
@@ -251,8 +251,6 @@ start_button = tk.Button(
     text="Start Brute-Force",
     font=("Arial", 12),
     command=start_bruteforce,
-    bg="gray20",
-    fg="white",
 )
 start_button.grid(row=0, column=0, padx=10)
 
@@ -261,8 +259,6 @@ cancel_button = tk.Button(
     text="Cancel",
     font=("Arial", 12),
     command=cancel_bruteforce,
-    bg="gray20",
-    fg="white",
 )
 cancel_button.grid(row=0, column=1, padx=10)
 
