@@ -33,7 +33,6 @@ def validate_base58_address(address):
     except (ValueError, binascii.Error):
         return False
 
-
 def brute_force_checksum(base58_input, start_suffix, progress_label, progress_bar, time_label, hps_label, payload_hex_textbox, stop_event):
     """
     Brute-force valid Base58 characters to make the total address 34 bytes and validate it.
@@ -77,15 +76,7 @@ def brute_force_checksum(base58_input, start_suffix, progress_label, progress_ba
         # Validate the candidate address
         if validate_base58_address(candidate_address):
             result_text.insert(tk.END, f"Valid address found: {candidate_address}\n")
-            progress_label.config(text="Progress: Done!")
-            progress_bar["value"] = 100
-            time_label.config(text="Time Remaining: Completed")
-            hps_label.config(text="Hashes per Second: N/A")
-            payload_hex_textbox.config(state="normal")
-            payload_hex_textbox.delete("1.0", tk.END)
-            payload_hex_textbox.insert("1.0", candidate_address)
-            payload_hex_textbox.config(state="disabled")
-            return
+            # No return here, we want to continue until the brute force is exhausted
 
         # Update progress, ETC, and H/s in UI every 800,000 combinations
         combinations_checked += 1
@@ -116,7 +107,6 @@ def brute_force_checksum(base58_input, start_suffix, progress_label, progress_ba
     progress_label.config(text="Progress: Finished.")
     time_label.config(text="Time Remaining: N/A")
     hps_label.config(text="Hashes per Second: N/A")
-
 
 def start_bruteforce():
     """

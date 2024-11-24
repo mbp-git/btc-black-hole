@@ -3,20 +3,17 @@ name = "btc-black-hole-rust"
 version = "0.1.0"
 edition = "2021"
 
-# Optional: Update description, authors, and license
-description = "A Bitcoin address checksum brute-force GUI tool."
-authors = ["Your Name <youremail@example.com>"]
-license = "MIT"
+[dependencies]
+crossbeam = "0.8"
+eframe = "0.22.0"
+num_cpus = "1.13"
+bitcoin = "0.30.1"
+base58 = "0.1.0"
 
-# Define the binary
+[lib]
+name = "btc_black_hole_rust"
+path = "src/lib.rs"
+
 [[bin]]
 name = "btc-black-hole-rust"
 path = "src/main.rs"
-
-[dependencies]
-eframe = "0.22"
-egui = "0.22"
-base58 = "0.1.0"
-crossbeam = "0.8"
-num_cpus = "1.13"
-bitcoin = "0.30"
