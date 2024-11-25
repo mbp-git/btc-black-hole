@@ -10,11 +10,17 @@ use std::time::{Duration, Instant};
 
 use crossbeam::channel::{bounded, Receiver, Sender};
 use eframe::egui;
-use eframe::egui::{CentralPanel, ProgressBar, TextEdit, Vec2};
+use eframe::egui::{CentralPanel, ProgressBar, SelectableLabel, TextEdit, Vec2};
 use num_cpus;
 use base58::FromBase58;
 
-use sha2::{Digest, Sha256}; // Add this import at the top if not already present
+use sha2::{Digest, Sha256}; // SHA256 for checksum
+
+// Add copypasta crate for clipboard functionality
+use copypasta::{ClipboardContext, ClipboardProvider};
+
+// Add core_affinity crate for thread affinity
+use core_affinity::{CoreId, get_core_ids, set_for_current};
 
 // Define constants
 const MAX_SUFFIX_LENGTH: usize = 34;
@@ -23,7 +29,7 @@ const MAX_DECODING_LENGTH: usize = 25; // Decoded Bitcoin address length (versio
 
 /// Messages sent from brute-force threads to the GUI
 #[derive(Debug, Clone)]
-pub enum Message {  
+pub enum Message {
     ProgressUpdate {
         thread_id: usize,
         progress: f32,
@@ -60,9 +66,11 @@ pub struct BruteForceApp {
     pub total_hashes_per_second: f64,
     pub running: bool,
     pub stop_flag: Arc<AtomicBool>,
+    pub pause_flag: Arc<AtomicBool>,
     pub receiver: Option<Receiver<Message>>,
     pub thread_infos: BTreeMap<usize, ThreadInfo>,
     pub found_addresses: Vec<String>,
+    pub is_paused: bool, // To track the pause state
 }
 
 impl Default for BruteForceApp {
@@ -75,9 +83,11 @@ impl Default for BruteForceApp {
             total_hashes_per_second: 0.0,
             running: false,
             stop_flag: Arc::new(AtomicBool::new(false)),
+            pause_flag: Arc::new(AtomicBool::new(false)),
             receiver: None,
             thread_infos: BTreeMap::new(),
             found_addresses: Vec::new(),
+            is_paused: false,
         }
     }
 }
@@ -105,7 +115,7 @@ impl eframe::App for BruteForceApp {
                     ui.label("Number of Threads:");
                     ui.add(
                         egui::DragValue::new(&mut self.thread_count)
-                            .clamp_range(1..=num_cpus::get())
+                            .range(1..=num_cpus::get()) // Updated to use `range` instead of `clamp_range`
                             .speed(1),
                     );
                     ui.label(format!("(Available CPUs: {})", num_cpus::get()));
@@ -155,21 +165,39 @@ impl eframe::App for BruteForceApp {
             ui.label("Found Addresses:");
             egui::ScrollArea::vertical().max_height(150.0).show(ui, |ui| {
                 for addr in &self.found_addresses {
-                    ui.label(addr);
+                    // Use SelectableLabel for copy-paste functionality
+                    ui.add(SelectableLabel::new(false, addr));
                 }
             });
 
             ui.separator();
 
-            // Start/Cancel Buttons
-            if !self.running {
-                if ui.button("Start Brute-Force").clicked() {
-                    self.start_bruteforce();
+            // Start/Pause/Cancel Buttons
+            ui.horizontal(|ui| {
+                if !self.running {
+                    if ui.button("Start Brute-Force").clicked() {
+                        self.start_bruteforce();
+                    }
+                } else {
+                    let pause_label = if self.is_paused { "Resume" } else { "Pause" };
+                    if ui.button(pause_label).clicked() {
+                        self.is_paused = !self.is_paused;
+                        self.pause_flag.store(self.is_paused, Ordering::SeqCst);
+                    }
+
+                    if ui.button("Cancel").clicked() {
+                        self.stop_flag.store(true, Ordering::SeqCst);
+                    }
                 }
-            } else {
-                if ui.button("Cancel").clicked() {
-                    self.stop_flag.store(true, Ordering::SeqCst);
-                }
+            });
+
+            if self.running {
+                let status_text = if self.is_paused {
+                    "Status: Paused"
+                } else {
+                    "Status: Running"
+                };
+                ui.label(status_text);
             }
 
             // Check for new messages
@@ -204,6 +232,7 @@ impl eframe::App for BruteForceApp {
                             self.found_addresses.push(candidate);
                         }
                         Message::Finished => {
+                            self.progress = 100.0; // Ensure progress reaches 100%
                             self.running = false;
                             self.receiver = None;
                         }
@@ -234,6 +263,8 @@ impl eframe::App for BruteForceApp {
 impl BruteForceApp {
     pub fn start_bruteforce(&mut self) {
         self.stop_flag.store(false, Ordering::SeqCst);
+        self.pause_flag = Arc::new(AtomicBool::new(false));
+        self.is_paused = false;
 
         let base58_input = self.base58_input.clone();
         let thread_count = self.thread_count;
@@ -261,9 +292,8 @@ impl BruteForceApp {
             return;
         }
 
-        let base58_alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-        let base58_len = base58_alphabet.len() as u128;
-        let total_combinations = (base58_len)
+        let base58_len = 58u128; // Fixed Base58 length
+        let total_combinations = base58_len
             .checked_pow(chars_to_add as u32)
             .unwrap_or(u128::MAX);
 
@@ -286,8 +316,16 @@ impl BruteForceApp {
             0u128
         };
 
-        let combinations_per_thread = (total_combinations - start_index) / thread_count as u128;
+        let combinations_per_thread = if thread_count > 0 {
+            (total_combinations - start_index) / thread_count as u128
+        } else {
+            total_combinations
+        };
         let mut thread_start_index = start_index;
+
+        // Retrieve available core IDs
+        let core_ids = get_core_ids().expect("Failed to get core IDs");
+        let num_cores = core_ids.len();
 
         for thread_id in 0..thread_count {
             let thread_end_index = if thread_id == thread_count - 1 {
@@ -299,6 +337,10 @@ impl BruteForceApp {
             let base58_input_clone = base58_input.clone();
             let tx_clone = tx.clone();
             let stop_flag_clone = Arc::clone(&self.stop_flag);
+            let pause_flag_clone = Arc::clone(&self.pause_flag);
+
+            // Determine which core to bind this thread to
+            let core_id = core_ids[thread_id % num_cores];
 
             // Convert start and end ranges to base58
             let start_range_base58 = base58_encode(thread_start_index, chars_to_add);
@@ -316,6 +358,8 @@ impl BruteForceApp {
             );
 
             thread::spawn(move || {
+                // Bind this thread to the specified core
+                set_for_current(core_id);
                 brute_force_checksum(
                     &base58_input_clone,
                     thread_start_index,
@@ -323,6 +367,7 @@ impl BruteForceApp {
                     thread_id,
                     tx_clone,
                     stop_flag_clone,
+                    pause_flag_clone,
                 )
             });
 
@@ -354,6 +399,7 @@ pub fn brute_force_checksum(
     thread_id: usize,
     tx: Sender<Message>,
     stop_flag: Arc<AtomicBool>,
+    pause_flag: Arc<AtomicBool>,
 ) {
     let chars_to_add = 34 - base58_input.len();
 
@@ -372,6 +418,11 @@ pub fn brute_force_checksum(
     let base = 58u128;
 
     while i < end_range {
+        // Check for pause
+        while pause_flag.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(1000));
+        }
+
         if stop_flag.load(Ordering::SeqCst) {
             let _ = tx.send(Message::Cancelled);
             return;
@@ -394,15 +445,15 @@ pub fn brute_force_checksum(
                 &candidate_address[..base58_input_bytes.len() + chars_to_add],
             )
             .to_string();
-            let _ = tx.send(Message::Found { candidate: found_address });
+            let _ = tx.send(Message::Found { candidate: found_address.clone() });
         }
 
         hashes_done += 1;
 
-        if last_update.elapsed() >= Duration::from_secs(1) {
-            let progress = ((i - start_range) as f32 / total as f32) * 100.0;
+        if last_update.elapsed() >= Duration::from_secs(1) || i == end_range - 1 {
+            let progress = ((i - start_range + 1) as f32 / total as f32) * 100.0;
             let hashes_per_second = hashes_done as f64 / last_update.elapsed().as_secs_f64();
-            let remaining_calculations = end_range - i;
+            let remaining_calculations = end_range - i - 1;
 
             let _ = tx.send(Message::ProgressUpdate {
                 thread_id,
@@ -455,18 +506,22 @@ fn base58_decode(input: &[u8], output: &mut [u8]) -> Result<usize, ()> {
     let mut result_len = 0;
 
     for &byte in input {
-        let mut carry = match BASE58_DECODE_MAP[byte as usize] {
+        let carry = match BASE58_DECODE_MAP[byte as usize] {
             255 => return Err(()), // Invalid character
             val => val as u32,
         };
 
+        let mut carry = carry;
         for i in 0..result_len {
-            let val = result[i] as u32 * 58 + carry;
+            let val = (result[i] as u32) * 58 + carry;
             result[i] = (val & 0xFF) as u8;
             carry = val >> 8;
         }
 
         while carry > 0 {
+            if result_len >= result.len() {
+                return Err(()); // Prevent overflow
+            }
             result[result_len] = (carry & 0xFF) as u8;
             result_len += 1;
             carry >>= 8;
@@ -521,7 +576,7 @@ const BASE58_DECODE_MAP: [u8; 256] = {
 fn base58_encode(mut value: u128, length: usize) -> String {
     let base58_alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
     let mut result = vec![0u8; length];
-    let base = base58_alphabet.len() as u128;
+    let base = 58u128;
 
     for idx in (0..length).rev() {
         let rem = (value % base) as usize;
@@ -529,7 +584,7 @@ fn base58_encode(mut value: u128, length: usize) -> String {
         value /= base;
     }
 
-    unsafe { String::from_utf8_unchecked(result) }
+    String::from_utf8(result).expect("Base58 encoding failed")
 }
 
 // Utility function to format hash rate
