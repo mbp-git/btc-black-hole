@@ -1,0 +1,7 @@
+[package]
+name = "base58_o1"
+version = "0.1.0"
+authors = ["MPB <mpb.git@proton.me>"]
+edition = "2021"
+
+[dependencies]
