@@ -19,11 +19,18 @@ use std::str::FromStr;
 // use base64::engine::general_purpose::STANDARD;
 // use base64::Engine;
 // use base58::{FromBase58, ToBase58};
-use base58::{FromBase58, ToBase58};
+use base58::FromBase58;
+
+use sha2::{Digest, Sha256}; // Add this import at the top if not already present
+
+// Define constants
+const MAX_SUFFIX_LENGTH: usize = 34;
+const MAX_ADDRESS_LENGTH: usize = 34; // Bitcoin addresses are 34 characters long
+const MAX_DECODING_LENGTH: usize = 25; // Decoded Bitcoin address length (version + payload + checksum)
 
 /// Messages sent from brute-force threads to the GUI
 #[derive(Debug, Clone)]
-pub enum Message {
+pub enum Message {  
     ProgressUpdate {
         thread_id: usize,
         progress: f32,
@@ -68,7 +75,7 @@ pub struct BruteForceApp {
 impl Default for BruteForceApp {
     fn default() -> Self {
         Self {
-            base58_input: String::from("1BitcoinEaterAddressDontSendf59kuE"),
+            base58_input: String::from("1BitcoinEaterAddressDontSend"),
             thread_count: num_cpus::get(),
             start_range_base58: String::new(), // Initialize to empty string
             progress: 0.0,
@@ -317,7 +324,7 @@ impl BruteForceApp {
 
             thread::spawn(move || {
                 brute_force_checksum(
-                    base58_input_clone,
+                    &base58_input_clone,
                     thread_start_index,
                     thread_end_index,
                     thread_id,
@@ -348,7 +355,7 @@ impl BruteForceApp {
 }
 
 pub fn brute_force_checksum(
-    base58_input: String,
+    base58_input: &str,
     start_range: u128,
     end_range: u128,
     thread_id: usize,
@@ -362,8 +369,14 @@ pub fn brute_force_checksum(
     let mut hashes_done = 0u128;
     let mut i = start_range;
 
-    let base58_alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-    let base = base58_alphabet.len() as u128;
+    // Pre-allocate buffers
+    let mut suffix_chars = [0u8; MAX_SUFFIX_LENGTH];
+    let mut candidate_address = [0u8; MAX_ADDRESS_LENGTH]; // Bitcoin addresses are 34 characters long
+    let base58_input_bytes = base58_input.as_bytes();
+    candidate_address[..base58_input_bytes.len()].copy_from_slice(base58_input_bytes);
+
+    let base58_alphabet_bytes = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let base = 58u128;
 
     while i < end_range {
         if stop_flag.load(Ordering::SeqCst) {
@@ -371,22 +384,24 @@ pub fn brute_force_checksum(
             return;
         }
 
+        // Base58 encode counter value into suffix_chars
         let mut value = i;
-        let mut suffix_chars = vec![0u8; chars_to_add];
         for idx in (0..chars_to_add).rev() {
             let rem = (value % base) as usize;
-            suffix_chars[idx] = base58_alphabet.as_bytes()[rem];
+            suffix_chars[idx] = base58_alphabet_bytes[rem];
             value /= base;
         }
-        let suffix_str = unsafe { String::from_utf8_unchecked(suffix_chars.clone()) };
 
-        let candidate_address = format!("{}{}", base58_input, suffix_str);
+        // Construct candidate address without allocations
+        candidate_address[base58_input_bytes.len()..].copy_from_slice(&suffix_chars[..chars_to_add]);
 
-        if validate_base58_address(&candidate_address) {
-            let _ = tx.send(Message::Found {
-                candidate: candidate_address.clone(),
-            });
-            // Continue searching for more valid addresses
+        // Validate address
+        if validate_base58_address(&candidate_address[..base58_input_bytes.len() + chars_to_add]) {
+            let found_address = String::from_utf8_lossy(
+                &candidate_address[..base58_input_bytes.len() + chars_to_add],
+            )
+            .to_string();
+            let _ = tx.send(Message::Found { candidate: found_address });
         }
 
         hashes_done += 1;
@@ -396,17 +411,17 @@ pub fn brute_force_checksum(
             let hashes_per_second = hashes_done as f64 / last_update.elapsed().as_secs_f64();
             let remaining_calculations = end_range - i;
 
-            let start_range_base58 = base58_encode(start_range, chars_to_add);
-            let end_range_base58 = base58_encode(end_range - 1, chars_to_add);
-
             let _ = tx.send(Message::ProgressUpdate {
                 thread_id,
                 progress,
                 hashes_per_second,
-                current_candidate: candidate_address.clone(),
+                current_candidate: String::from_utf8_lossy(
+                    &candidate_address[..base58_input_bytes.len() + chars_to_add],
+                )
+                .to_string(),
                 remaining_calculations,
-                start_range_base58,
-                end_range_base58,
+                start_range_base58: base58_encode(start_range, chars_to_add),
+                end_range_base58: base58_encode(end_range - 1, chars_to_add),
             });
 
             last_update = Instant::now();
@@ -419,9 +434,96 @@ pub fn brute_force_checksum(
     let _ = tx.send(Message::Finished);
 }
 
-pub fn validate_base58_address(address: &str) -> bool {
-    Address::from_str(address).is_ok()
+pub fn validate_base58_address(address: &[u8]) -> bool {
+    // Decode Base58 to bytes
+    let mut decoded = [0u8; MAX_DECODING_LENGTH];
+    match base58_decode(address, &mut decoded) {
+        Ok(decoded_len) => {
+            if decoded_len != 25 {
+                return false;
+            }
+
+            // Split payload and checksum
+            let (payload, checksum) = decoded.split_at(decoded_len - 4);
+
+            // Compute checksum
+            let computed_checksum = double_sha256(payload);
+
+            // Compare checksums
+            checksum == &computed_checksum[..4]
+        }
+        Err(_) => false,
+    }
 }
+
+// Implement a simple Base58 decoder that writes into a fixed-size buffer
+fn base58_decode(input: &[u8], output: &mut [u8]) -> Result<usize, ()> {
+    let mut result = [0u8; 32]; // Temporary buffer for result
+    let mut result_len = 0;
+
+    for &byte in input {
+        let mut carry = match BASE58_DECODE_MAP[byte as usize] {
+            255 => return Err(()), // Invalid character
+            val => val as u32,
+        };
+
+        for i in 0..result_len {
+            let val = result[i] as u32 * 58 + carry;
+            result[i] = (val & 0xFF) as u8;
+            carry = val >> 8;
+        }
+
+        while carry > 0 {
+            result[result_len] = (carry & 0xFF) as u8;
+            result_len += 1;
+            carry >>= 8;
+        }
+    }
+
+    // Leading zeros
+    let mut leading_zeros = 0;
+    for &byte in input {
+        if byte == b'1' {
+            leading_zeros += 1;
+        } else {
+            break;
+        }
+    }
+
+    // Copy result to output buffer in big-endian order
+    let total_len = leading_zeros + result_len;
+    if total_len > output.len() {
+        return Err(());
+    }
+
+    output[..leading_zeros].fill(0);
+    for i in 0..result_len {
+        output[total_len - 1 - i] = result[i];
+    }
+
+    Ok(total_len)
+}
+
+// Double SHA256 hash function
+fn double_sha256(data: &[u8]) -> [u8; 32] {
+    let first_hash = Sha256::digest(data);
+    let second_hash = Sha256::digest(&first_hash);
+    let mut result = [0u8; 32];
+    result.copy_from_slice(&second_hash);
+    result
+}
+
+// Precompute Base58 decode map
+const BASE58_DECODE_MAP: [u8; 256] = {
+    let mut map = [255u8; 256];
+    let alphabet = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let mut i = 0;
+    while i < alphabet.len() {
+        map[alphabet[i] as usize] = i as u8;
+        i += 1;
+    }
+    map
+};
 
 fn base58_encode(mut value: u128, length: usize) -> String {
     let base58_alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
