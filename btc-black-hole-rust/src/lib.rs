@@ -12,13 +12,6 @@ use crossbeam::channel::{bounded, Receiver, Sender};
 use eframe::egui;
 use eframe::egui::{CentralPanel, ProgressBar, TextEdit, Vec2};
 use num_cpus;
-use bitcoin::Address;
-use std::str::FromStr;
-
-// Removed unused imports
-// use base64::engine::general_purpose::STANDARD;
-// use base64::Engine;
-// use base58::{FromBase58, ToBase58};
 use base58::FromBase58;
 
 use sha2::{Digest, Sha256}; // Add this import at the top if not already present

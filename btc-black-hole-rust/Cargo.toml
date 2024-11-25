@@ -9,6 +9,7 @@ eframe = { version = "0.22.0", features = ["wgpu"] }
 num_cpus = "1.13"
 bitcoin = "0.30.1"
 base58 = "0.2.0"
+sha2 = { version = "0.10", features = ["asm"] }
 
 [lib]
 name = "btc_black_hole_rust"
@@ -19,10 +20,7 @@ name = "btc-black-hole-rust"
 path = "src/main.rs"
 
 [profile.release]
-opt-level = "z"
+opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
-
-[profile.dev]
-opt-level = 3

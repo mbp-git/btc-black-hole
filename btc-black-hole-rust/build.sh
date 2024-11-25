@@ -13,8 +13,9 @@ print_message "Step 1: Cleaning the project..."
 cargo clean
 echo "✅ Project cleaned successfully.\n"
 
-# Step 2: Build the project in release mode
+# Step 2: Build the project in release mode with optimizations
 print_message "Step 2: Building the project (release mode)..."
+export RUSTFLAGS="-C target-cpu=native -C target-feature=+neon"
 cargo build --release
 echo "✅ Project built successfully.\n"
 
