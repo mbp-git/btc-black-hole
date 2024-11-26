@@ -1,5 +1,7 @@
 btc-black-hole-rust/.*/
 btc-black-hole-rust/target/
+btc-black-hole-rust/base58_o1/target/
+btc-black-hole-rust/base58_o1/Cargo.lock
 btc-black-hole-rust/target/release/.fingerprint/
 btc-black-hole-rust/Cargo.lock
 .DS_Store
