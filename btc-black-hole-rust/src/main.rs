@@ -1,6 +1,5 @@
 // src/main.rs
 
-use eframe::egui;
 use btc_black_hole_rust::BruteForceApp;
 
 fn main() {
@@ -12,5 +11,6 @@ fn main() {
             // Wrap the Box in Ok to match the expected Result type
             Ok(Box::new(BruteForceApp::default()))
         }),
-    );
+    )
+    .expect("Failed to run the eframe application");
 }

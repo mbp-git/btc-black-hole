@@ -16,11 +16,8 @@ use base58::FromBase58;
 
 use sha2::{Digest, Sha256}; // SHA256 for checksum
 
-// Add copypasta crate for clipboard functionality
-use copypasta::{ClipboardContext, ClipboardProvider};
-
 // Add core_affinity crate for thread affinity
-use core_affinity::{CoreId, get_core_ids, set_for_current};
+use core_affinity::{get_core_ids, set_for_current};
 
 // Define constants
 const MAX_SUFFIX_LENGTH: usize = 34;
