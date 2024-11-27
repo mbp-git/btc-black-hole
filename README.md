@@ -87,10 +87,10 @@ These settings are specified in the Cargo.toml file:
 
 ```bash
 [profile.release]
-    opt-level = "3"
-    lto = true
-    codegen-units = 1
-    panic = "abort"
+opt-level = "3"
+lto = true
+codegen-units = 1
+panic = "abort"
 ```
 
 Project Structure
@@ -100,6 +100,7 @@ Project Structure
 * **src/lib.rs**: Core application logic and GUI implementation.
 * **Cargo.toml**: Project metadata and dependencies.
 * **tests/brute\_force\_tests.rs**: Unit tests for the application.
+* **build.sh**: Convenient script to clean, build and run the application.
 
 Contributing
 ------------
